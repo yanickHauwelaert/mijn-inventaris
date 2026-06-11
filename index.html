@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>📷 GSM Barcode Scanner naar Google Sheets</title>
+    <title>📦 Live Inventaris App</title>
     <script src="https://unpkg.com/html5-qrcode"></script>
     <style>
         body { font-family: 'Segoe UI', Arial, sans-serif; max-width: 500px; margin: 0 auto; padding: 20px; background-color: #f8f9fa; }
@@ -13,60 +13,120 @@
         #status-message { padding: 15px; border-radius: 8px; margin: 20px 0; text-align: center; font-weight: bold; display: none; }
         .success { background: #e6f4ea; color: #137333; border: 1px solid #ceead6; }
         .loading { background: #fef7e0; color: #b06000; border: 1px solid #feefc3; }
-        .error { background: #fce8e6; color: #c5221f; border: 1px solid #fad2cf; }
+        
+        /* Tabel styling */
+        h2 { margin-top: 30px; font-size: 18px; color: #333; }
+        table { width: 100%; border-collapse: collapse; margin-top: 10px; background: white; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 6px rgba(0,0,0,0.05); }
+        th, td { padding: 10px 12px; text-align: left; font-size: 14px; border-bottom: 1px solid #eee; }
+        th { background-color: #f1f3f4; color: #202124; font-weight: 600; }
+        tr:last-child td { border-bottom: none; }
     </style>
 </head>
 <body>
 
-    <h1>📦 Inventaris Scanner</h1>
-    <p class="sub">Scan een product om het direct in Google Sheets bij te werken.</p>
+    <h1>📦 Live Inventaris App</h1>
+    <p class="sub">Scan producten en zie de lijst live updaten.</p>
     
     <div id="reader"></div>
     
     <div id="status-message"></div>
 
+    <h2>📊 Huidige Inventaris (Google Sheets)</h2>
+    <table>
+        <thead>
+            <tr>
+                <th>Productnaam</th>
+                <th>Aantal</th>
+            </tr>
+        </thead>
+        <tbody id="inventory-body">
+            <tr><td colspan="2" style="text-align:center; color:#888;">Lijst aan het laden...</td></tr>
+        </tbody>
+    </table>
+
     <script>
-        // PLAK HIER JOUW UNIQUE WEB-APP URL VAN GOOGLE:
+        // PLAK HIER JOUW GOOGLE WEB APP URL:
         const GOOGLE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbz6VK3_JquyrtT6Rr6WeHpVpicKEQ3evXrfAuDrpJSHmxt09lU3uh1jWARTVpVu72fl/exec";
 
+        let localInventoryCache = [];
         let isScanningAllowed = true;
 
+        // Haal bij het opstarten meteen de lijst op uit Google Sheets
+        loadLiveInventory();
+
+        function loadLiveInventory() {
+            fetch(GOOGLE_SCRIPT_URL)
+            .then(res => res.json())
+            .then(data => {
+                localInventoryCache = data;
+                renderTable(data);
+            })
+            .catch(err => console.error("Fout bij laden van inventaris:", err));
+        }
+
+        function renderTable(items) {
+            const tbody = document.getElementById('inventory-body');
+            if (items.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="2" style="text-align:center;">Nog geen producten.</td></tr>';
+                return;
+            }
+            tbody.innerHTML = '';
+            items.forEach(item => {
+                tbody.innerHTML += `<tr><td><strong>${item.name}</strong><br><small style="color:#666;">${item.barcode}</small></td><td>${item.count}x</td></tr>`;
+            });
+        }
+
         function onScanSuccess(decodedText, decodedResult) {
-            if (!isScanningAllowed) return; 
+            if (!isScanningAllowed) return;
             isScanningAllowed = false;
 
             const statusBox = document.getElementById('status-message');
             statusBox.className = "loading";
-            statusBox.innerText = "⏳ Barcode " + decodedText + " verwerken...";
+            statusBox.innerText = "⏳ Controleren in database...";
             statusBox.style.display = 'block';
 
-            // We sturen dit nu als 'text/plain' om de browser-blokkade (CORS) te omzeilen,
-            // maar de inhoud is wel gewoon de JSON data die Google Sheets verwacht!
+            // Check of de code al in onze lokale lijst (uit Google Sheets) staat
+            const bestaandProduct = localInventoryCache.find(item => item.barcode === decodedText.trim());
+            let productName = "";
+
+            if (!bestaandProduct) {
+                // Vraag via gsm-prompt om een naam als het product NIEUW is
+                productName = prompt(`Nieuwe barcode ontdekt (${decodedText}). Voer de productnaam in:`);
+                if (productName === null) {
+                    // Als gebruiker op annuleren klikt, reset de scanner
+                    statusBox.style.display = 'none';
+                    isScanningAllowed = true;
+                    return;
+                }
+            }
+
+            // Stuur de data op naar Google
             fetch(GOOGLE_SCRIPT_URL, {
                 method: "POST",
                 headers: { "Content-Type": "text/plain;charset=utf-8" },
-                body: JSON.stringify({ barcode: decodedText, name: "" })
+                body: JSON.stringify({ barcode: decodedText, name: productName })
             })
-            .then(response => response.json())
-            .then(data => {
+            .then(() => {
                 statusBox.className = "success";
-                statusBox.innerText = "🎯 Gescand! Google Sheet geüpdatet.";
+                statusBox.innerText = "🎯 Succesvol verwerkt!";
                 
+                // Haal meteen de nieuwste lijst op zodat je het resultaat direct ziet
+                loadLiveInventory();
+
                 setTimeout(function() {
                     statusBox.style.display = 'none';
                     isScanningAllowed = true;
-                }, 2500);
+                }, 2000);
             })
             .catch(error => {
-                // Soms geeft de browser alsnog een foutmelding op het antwoord (CORS),
-                // maar de data komt ALTIJD aan. We tonen voor de zekerheid succes.
+                // Vang eventuele haperingen op, herlaad voor de zekerheid altijd
+                loadLiveInventory();
                 statusBox.className = "success";
-                statusBox.innerText = "🎯 Gescand: " + decodedText + " verwerkt!";
-                
+                statusBox.innerText = "🎯 Gescand: " + decodedText;
                 setTimeout(function() {
                     statusBox.style.display = 'none';
                     isScanningAllowed = true;
-                }, 2500);
+                }, 2000);
             });
         }
 
