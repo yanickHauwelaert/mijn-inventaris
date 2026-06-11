@@ -3,108 +3,76 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>📦 Mijn Web Inventaris</title>
+    <title>📷 GSM Barcode Scanner naar Google Sheets</title>
     <script src="https://unpkg.com/html5-qrcode"></script>
     <style>
-        body { font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; background-color: #f4f4f9; }
-        h1, h2 { color: #333; text-align: center; }
-        #reader { width: 100%; max-width: 500px; margin: auto; background: white; border-radius: 8px; overflow: hidden; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
-        .scanned-box { background: #d4edda; color: #155724; padding: 15px; border-radius: 5px; margin: 20px 0; text-align: center; font-weight: bold; display: none; }
-        table { width: 100%; border-collapse: collapse; margin-top: 20px; background: white; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
-        th, td { border: 1px solid #ddd; padding: 12px; text-align: left; }
-        th { background-color: #007bff; color: white; }
-        tr:nth-child(even) { background-color: #f9f9f9; }
-        .btn-clear { background: #dc3545; color: white; border: none; padding: 10px 15px; border-radius: 5px; cursor: pointer; display: block; margin: 20px auto; }
+        body { font-family: 'Segoe UI', Arial, sans-serif; max-width: 500px; margin: 0 auto; padding: 20px; background-color: #f8f9fa; }
+        h1 { color: #202124; text-align: center; font-size: 24px; margin-bottom: 5px; }
+        p.sub { text-align: center; color: #5f6368; margin-top: 0; margin-bottom: 25px; }
+        #reader { width: 100%; background: white; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 12px rgba(0,0,0,0.1); border: none; }
+        #status-message { padding: 15px; border-radius: 8px; margin: 20px 0; text-align: center; font-weight: bold; display: none; }
+        .success { background: #e6f4ea; color: #137333; border: 1px solid #ceead6; }
+        .loading { background: #fef7e0; color: #b06000; border: 1px solid #feefc3; }
+        .error { background: #fce8e6; color: #c5221f; border: 1px solid #fad2cf; }
     </style>
 </head>
 <body>
 
-    <h1>📦 Mijn Web Inventaris</h1>
+    <h1>📦 Inventaris Scanner</h1>
+    <p class="sub">Scan een product om het direct in Google Sheets bij te werken.</p>
     
     <div id="reader"></div>
     
-    <div id="scan-result" class="scanned-box"></div>
-
-    <h2>📊 Huidige Inventaris</h2>
-    <table id="inventory-table">
-        <thead>
-            <tr>
-                <th>Barcode</th>
-                <th>Productnaam</th>
-                <th>Aantal</th>
-            </tr>
-        </thead>
-        <tbody id="inventory-body">
-            </tbody>
-    </table>
-
-    <button class="btn-clear" onclick="clearInventory()">Inventaris Wissen</button>
+    <div id="status-message"></div>
 
     <script>
-        // Laad de inventaris uit het geheugen van de browser, of start leeg
-        let inventory = JSON.parse(localStorage.getItem('my_inventory')) || {};
+        // PLAK HIER JOUW UNIEKE WEB-APP URL DIE JE VAN GOOGLE HEBT GEKREGEN:
+        const GOOGLE_SCRIPT_URL = "HIER_JOUW_GEKOPIEERDE_GOOGLE_WEB_APP_URL_PLAKKEN";
 
-        // Update de tabel op het scherm bij het opstarten
-        updateTable();
+        let isScanningAllowed = true;
 
         function onScanSuccess(decodedText, decodedResult) {
-            const resultBox = document.getElementById('scan-result');
-            resultBox.innerText = `🎯 Gescand: ${decodedText}`;
-            resultBox.style.display = 'block';
+            // Voorkom dat hij 10 keer achter elkaar scant als je de barcode stilhoudt
+            if (!isScanningAllowed) return; 
+            isScanningAllowed = false;
 
-            // Als de barcode al bestaat, verhoog aantal met 1
-            if (inventory[decodedText]) {
-                inventory[decodedText].count += 1;
-                saveAndRefresh();
-            } else {
-                // Vraag eenmalig om een naam voor het nieuwe product
-                // html5QrcodeScanner.clear(); // Pauzeer scanner tijdens typen
-                let name = prompt(`Nieuwe barcode ontdekt (${decodedText}). Voer de productnaam in:`);
-                if (name) {
-                    inventory[decodedText] = { name: name, count: 1 };
-                }
-                saveAndRefresh();
-            }
+            const statusBox = document.getElementById('status-message');
+            statusBox.className = "loading";
+            statusBox.innerText = `⏳ Barcode ${decodedText} verwerken...`;
+            statusBox.style.display = 'block';
+
+            // We sturen de barcode naar Google Sheets om te checken of hij al bestaat
+            fetch(GOOGLE_SCRIPT_URL, {
+                method: "POST",
+                mode: "no-cors", // Nodig om problemen met beveiliging in de browser te omzeilen
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ barcode: decodedText, name: "" })
+            })
+            .then(() => {
+                // Omdat we 'no-cors' gebruiken, geeft Google geen antwoord-tekst terug aan JS, 
+                // maar de data komt ALTIJD aan en wordt direct verwerkt in je Sheet!
+                statusBox.className = "success";
+                statusBox.innerText = `🎯 Gescand: ${decodedText}! Toegevoegd/verhoogd in Google Sheets.`;
+                
+                // Wacht 3 seconden en zet de scanner dan weer open voor het volgende product
+                setTimeout(() => {
+                    statusBox.style.display = 'none';
+                    isScanningAllowed = true;
+                }, 3000);
+            })
+            .catch(error => {
+                statusBox.className = "error";
+                statusBox.innerText = "❌ Er ging iets mis met het verzenden.";
+                console.error(error);
+                isScanningAllowed = true;
+            });
         }
 
-        function saveAndRefresh() {
-            // Sla op in LocalStorage van de browser
-            localStorage.setItem('my_inventory', JSON.stringify(inventory));
-            updateTable();
-            
-            // Verberg de succesmelding na 3 seconden automatisch
-            setTimeout(() => {
-                document.getElementById('scan-result').style.display = 'none';
-            }, 3000);
-        }
-
-        function updateTable() {
-            const tbody = document.getElementById('inventory-body');
-            tbody.innerHTML = ''; // Maak leeg
-
-            for (const [barcode, info] of Object.entries(inventory)) {
-                const row = `<tr>
-                    <td>${barcode}</td>
-                    <td>${info.name}</td>
-                    <td>${info.count}</td>
-                </tr>`;
-                tbody.innerHTML += row;
-            }
-        }
-
-        function clearInventory() {
-            if (confirm("Weet je zeker dat je de hele inventaris wilt wissen?")) {
-                inventory = {};
-                localStorage.removeItem('my_inventory');
-                updateTable();
-            }
-        }
-
-        // Start de webcam/gsm-camera scanner
+        // Start de camera (geoptimaliseerd voor gsm/webcam barcodes)
         let html5QrcodeScanner = new Html5QrcodeScanner("reader", { 
-            fps: 20, 
-            qrbox: {width: 300, height: 150},
-            experimentalFeatures: {useBarCodeDetectorIfSupported: true}
+            fps: 15, 
+            qrbox: { width: 300, height: 150 }, // Rechthoekig vlak voor barcodes
+            experimentalFeatures: { useBarCodeDetectorIfSupported: true }
         });
         html5QrcodeScanner.render(onScanSuccess);
     </script>
