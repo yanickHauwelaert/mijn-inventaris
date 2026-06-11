@@ -26,70 +26,36 @@
     <div id="status-message"></div>
 
     <script>
-        // PLAK HIER JOUW UNIEKE WEB-APP URL DIE JE VAN GOOGLE HEBT GEKREGEN:
-        const GOOGLE_SCRIPT_URL = "<!DOCTYPE html>
-<html lang="nl">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>📷 GSM Barcode Scanner naar Google Sheets</title>
-    <script src="https://unpkg.com/html5-qrcode"></script>
-    <style>
-        body { font-family: 'Segoe UI', Arial, sans-serif; max-width: 500px; margin: 0 auto; padding: 20px; background-color: #f8f9fa; }
-        h1 { color: #202124; text-align: center; font-size: 24px; margin-bottom: 5px; }
-        p.sub { text-align: center; color: #5f6368; margin-top: 0; margin-bottom: 25px; }
-        #reader { width: 100%; background: white; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 12px rgba(0,0,0,0.1); border: none; }
-        #status-message { padding: 15px; border-radius: 8px; margin: 20px 0; text-align: center; font-weight: bold; display: none; }
-        .success { background: #e6f4ea; color: #137333; border: 1px solid #ceead6; }
-        .loading { background: #fef7e0; color: #b06000; border: 1px solid #feefc3; }
-        .error { background: #fce8e6; color: #c5221f; border: 1px solid #fad2cf; }
-    </style>
-</head>
-<body>
-
-    <h1>📦 Inventaris Scanner</h1>
-    <p class="sub">Scan een product om het direct in Google Sheets bij te werken.</p>
-    
-    <div id="reader"></div>
-    
-    <div id="status-message"></div>
-
-    <script>
-        // PLAK HIER JOUW UNIEKE WEB-APP URL DIE JE VAN GOOGLE HEBT GEKREGEN:
+        // JOUW GOOGLE WEB APP URL HIERONDER PLAKKEN:
         const GOOGLE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbz6VK3_JquyrtT6Rr6WeHpVpicKEQ3evXrfAuDrpJSHmxt09lU3uh1jWARTVpVu72fl/exec";
 
         let isScanningAllowed = true;
 
         function onScanSuccess(decodedText, decodedResult) {
-            // Voorkom dat hij 10 keer achter elkaar scant als je de barcode stilhoudt
             if (!isScanningAllowed) return; 
             isScanningAllowed = false;
 
             const statusBox = document.getElementById('status-message');
             statusBox.className = "loading";
-            statusBox.innerText = `⏳ Barcode ${decodedText} verwerken...`;
+            statusBox.innerText = "⏳ Barcode " + decodedText + " verwerken...";
             statusBox.style.display = 'block';
 
-            // We sturen de barcode naar Google Sheets om te checken of hij al bestaat
             fetch(GOOGLE_SCRIPT_URL, {
                 method: "POST",
-                mode: "no-cors", // Nodig om problemen met beveiliging in de browser te omzeilen
+                mode: "no-cors",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ barcode: decodedText, name: "" })
             })
-            .then(() => {
-                // Omdat we 'no-cors' gebruiken, geeft Google geen antwoord-tekst terug aan JS, 
-                // maar de data komt ALTIJD aan en wordt direct verwerkt in je Sheet!
+            .then(function() {
                 statusBox.className = "success";
-                statusBox.innerText = `🎯 Gescand: ${decodedText}! Toegevoegd/verhoogd in Google Sheets.`;
+                statusBox.innerText = "🎯 Gescand: " + decodedText + "! Verwerkt in Google Sheets.";
                 
-                // Wacht 3 seconden en zet de scanner dan weer open voor het volgende product
-                setTimeout(() => {
+                setTimeout(function() {
                     statusBox.style.display = 'none';
                     isScanningAllowed = true;
                 }, 3000);
             })
-            .catch(error => {
+            .catch(function(error) {
                 statusBox.className = "error";
                 statusBox.innerText = "❌ Er ging iets mis met het verzenden.";
                 console.error(error);
@@ -97,60 +63,9 @@
             });
         }
 
-        // Start de camera (geoptimaliseerd voor gsm/webcam barcodes)
         let html5QrcodeScanner = new Html5QrcodeScanner("reader", { 
             fps: 15, 
-            qrbox: { width: 300, height: 150 }, // Rechthoekig vlak voor barcodes
-            experimentalFeatures: { useBarCodeDetectorIfSupported: true }
-        });
-        html5QrcodeScanner.render(onScanSuccess);
-    </script>
-</body>
-</html>";
-
-        let isScanningAllowed = true;
-
-        function onScanSuccess(decodedText, decodedResult) {
-            // Voorkom dat hij 10 keer achter elkaar scant als je de barcode stilhoudt
-            if (!isScanningAllowed) return; 
-            isScanningAllowed = false;
-
-            const statusBox = document.getElementById('status-message');
-            statusBox.className = "loading";
-            statusBox.innerText = `⏳ Barcode ${decodedText} verwerken...`;
-            statusBox.style.display = 'block';
-
-            // We sturen de barcode naar Google Sheets om te checken of hij al bestaat
-            fetch(GOOGLE_SCRIPT_URL, {
-                method: "POST",
-                mode: "no-cors", // Nodig om problemen met beveiliging in de browser te omzeilen
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ barcode: decodedText, name: "" })
-            })
-            .then(() => {
-                // Omdat we 'no-cors' gebruiken, geeft Google geen antwoord-tekst terug aan JS, 
-                // maar de data komt ALTIJD aan en wordt direct verwerkt in je Sheet!
-                statusBox.className = "success";
-                statusBox.innerText = `🎯 Gescand: ${decodedText}! Toegevoegd/verhoogd in Google Sheets.`;
-                
-                // Wacht 3 seconden en zet de scanner dan weer open voor het volgende product
-                setTimeout(() => {
-                    statusBox.style.display = 'none';
-                    isScanningAllowed = true;
-                }, 3000);
-            })
-            .catch(error => {
-                statusBox.className = "error";
-                statusBox.innerText = "❌ Er ging iets mis met het verzenden.";
-                console.error(error);
-                isScanningAllowed = true;
-            });
-        }
-
-        // Start de camera (geoptimaliseerd voor gsm/webcam barcodes)
-        let html5QrcodeScanner = new Html5QrcodeScanner("reader", { 
-            fps: 15, 
-            qrbox: { width: 300, height: 150 }, // Rechthoekig vlak voor barcodes
+            qrbox: { width: 300, height: 150 },
             experimentalFeatures: { useBarCodeDetectorIfSupported: true }
         });
         html5QrcodeScanner.render(onScanSuccess);
